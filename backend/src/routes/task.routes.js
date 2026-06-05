@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { createTask, getTasks, getTask, getTaskLogs, deleteTask, retryTask } from '../controllers/task.controller.js';
+import { authenticate } from '../middleware/auth.js';
+const router = Router();
+router.use(authenticate);
+router.route('/').get(getTasks).post(createTask);
+router.route('/:id').get(getTask).delete(deleteTask);
+router.get('/:id/logs', getTaskLogs);
+router.post('/:id/retry', retryTask);
+export default router;
