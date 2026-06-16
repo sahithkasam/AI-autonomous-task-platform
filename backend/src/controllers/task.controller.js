@@ -27,12 +27,12 @@ export const createTask = async (req, res) => {
   await User.findByIdAndUpdate(req.user._id, { $inc: { 'stats.totalTasks': 1 } });
 
   // Start async — delay 4s so frontend can navigate + join socket room first
-  runTaskAsync(task._id, req.user._id, task.description, task.agentConfig);
+  runTaskAsync(task._id, req.user._id, task.description, task.agentConfig, task.attachedDocuments);
 
   res.status(201).json({ success: true, task });
 };
 
-const runTaskAsync = async (taskId, userId, description, agentConfig) => {
+const runTaskAsync = async (taskId, userId, description, agentConfig, attachedDocuments = []) => {
   // Give frontend time to navigate to workspace and join the socket room
   await new Promise(r => setTimeout(r, 4000));
 
@@ -42,7 +42,7 @@ const runTaskAsync = async (taskId, userId, description, agentConfig) => {
     await orchestrator.execute(description, agentConfig, (chunk) => {
       io.to(`task:${taskId}`).emit('agent:stream_chunk', { chunk, agentType: 'final' });
       io.to(`user:${userId}`).emit('agent:stream_chunk', { chunk, agentType: 'final', taskId });
-    });
+    }, attachedDocuments);
     await User.findByIdAndUpdate(userId, { $inc: { 'stats.completedTasks': 1 } });
   } catch (err) {
     logger.error(`Task ${taskId} failed: ${err.message}`);
@@ -90,6 +90,6 @@ export const retryTask = async (req, res) => {
     status: 'queued', finalOutput: '', subtasks: [], error: null,
     startedAt: null, completedAt: null, 'executionStats.totalTokens': 0,
   });
-  runTaskAsync(task._id, req.user._id, task.description, task.agentConfig);
+  runTaskAsync(task._id, req.user._id, task.description, task.agentConfig, task.attachedDocuments);
   res.json({ success: true, message: 'Task restarted' });
 };

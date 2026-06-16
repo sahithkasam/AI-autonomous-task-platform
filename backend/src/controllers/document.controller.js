@@ -2,6 +2,7 @@ import fs from 'fs';
 import Document from '../models/Document.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { processDocument, retrieveRelevantChunks } from '../services/ragService.js';
 
 export const uploadDocument = async (req, res) => {
   if (!req.file) throw new AppError('No file uploaded', 400);
@@ -12,13 +13,7 @@ export const uploadDocument = async (req, res) => {
 
 const processDocumentAsync = async (docId, filePath, mimeType) => {
   try {
-    let content = fs.readFileSync(filePath, 'utf-8');
-    const wordCount = content.split(/\s+/).filter(Boolean).length;
-    const chunkSize = 800;
-    const words = content.split(/\s+/);
-    const chunks = [];
-    for (let i = 0; i < words.length; i += chunkSize) chunks.push({ text: words.slice(i, i + chunkSize).join(' '), index: chunks.length });
-    await Document.findByIdAndUpdate(docId, { content: content.slice(0, 50000), chunks, status: 'ready', 'metadata.wordCount': wordCount });
+    await processDocument(docId, filePath, mimeType);
   } catch (err) {
     logger.error(`Doc processing failed: ${err.message}`);
     await Document.findByIdAndUpdate(docId, { status: 'failed' });
@@ -38,12 +33,8 @@ export const deleteDocument = async (req, res) => {
 };
 
 export const searchDocuments = async (req, res) => {
-  const { query, documentIds } = req.body;
+  const { query, documentIds, topK } = req.body;
   if (!query) throw new AppError('Query is required', 400);
-  const filter = { userId: req.user._id, status: 'ready' };
-  if (documentIds?.length) filter._id = { $in: documentIds };
-  const docs = await Document.find(filter).select('originalName content chunks').lean();
-  const queryLower = query.toLowerCase();
-  const results = docs.map(doc => ({ documentId: doc._id, name: doc.originalName, chunks: (doc.chunks || []).filter(c => c.text?.toLowerCase().includes(queryLower)).slice(0, 3).map(c => c.text) })).filter(r => r.chunks.length > 0);
+  const results = await retrieveRelevantChunks({ userId: req.user._id, query, documentIds: documentIds || [], topK: topK || 5 });
   res.json({ success: true, results });
 };

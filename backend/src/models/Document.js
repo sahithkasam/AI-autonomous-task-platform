@@ -7,7 +7,7 @@ const documentSchema = new mongoose.Schema({
   size: { type: Number, required: true },
   filePath: { type: String, required: true },
   content: String,
-  chunks: [{ text: String, index: Number }],
+  chunks: [{ text: String, index: Number, embedding: [Number] }],
   status: { type: String, enum: ['processing','ready','failed'], default: 'processing' },
   metadata: { pageCount: Number, wordCount: Number },
 }, { timestamps: true });

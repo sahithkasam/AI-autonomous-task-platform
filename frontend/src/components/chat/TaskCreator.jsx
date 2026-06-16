@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Settings2, Brain, Search, Zap, Database, Shield, Star, ChevronDown } from 'lucide-react';
+import { Send, Settings2, Brain, Search, Zap, Database, Shield, Star, ChevronDown, FileText } from 'lucide-react';
 import clsx from 'clsx';
+import { documentAPI } from '../../utils/api';
 
 const EXAMPLES = ['Plan a 5-day Goa trip under ₹25,000','Create a startup launch strategy for a SaaS product','Prepare a full-stack interview roadmap for FAANG','Build a 12-week fitness and meal plan for weight loss','Research and compare laptops for AI/ML development'];
 const AGENTS = [{ id:'research',label:'Research',icon:Search },{ id:'optimizer',label:'Optimizer',icon:Zap },{ id:'memory',label:'Memory',icon:Database },{ id:'critic',label:'Critic',icon:Shield },{ id:'final',label:'Final',icon:Star }];
@@ -11,12 +13,22 @@ export default function TaskCreator({ onSubmit, isLoading }) {
   const [showAdv, setShowAdv] = useState(false);
   const [enabledAgents, setEnabledAgents] = useState(['research', 'optimizer', 'critic', 'final']);
   const [priority, setPriority] = useState('medium');
+  const [attachedDocuments, setAttachedDocuments] = useState([]);
+
+  const { data: documents } = useQuery({
+    queryKey: ['documents'],
+    queryFn: () => documentAPI.getAll().then((r) => r.data.documents),
+  });
+  const readyDocuments = (documents || []).filter((d) => d.status === 'ready');
+
+  const toggleDocument = (id) => setAttachedDocuments((p) => p.includes(id) ? p.filter((d) => d !== id) : [...p, id]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!description.trim() || isLoading) return;
-    onSubmit({ title: description.slice(0, 80) + (description.length > 80 ? '...' : ''), description, priority, agentConfig: { enabledAgents, executionMode: 'hybrid' } });
+    onSubmit({ title: description.slice(0, 80) + (description.length > 80 ? '...' : ''), description, priority, agentConfig: { enabledAgents, executionMode: 'hybrid' }, attachedDocuments });
     setDescription('');
+    setAttachedDocuments([]);
   };
 
   return (
@@ -41,6 +53,16 @@ export default function TaskCreator({ onSubmit, isLoading }) {
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Priority</label>
                 <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-field py-2 text-sm">{['low','medium','high','urgent'].map(p => <option key={p} value={p} className="bg-surface-700 capitalize">{p}</option>)}</select>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 mb-2 font-medium">Knowledge Base (RAG)</p>
+                {readyDocuments.length ? (
+                  <div className="flex flex-wrap gap-2">{readyDocuments.map((doc) => (
+                    <button key={doc._id} type="button" onClick={() => toggleDocument(doc._id)} className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border transition-all max-w-[180px]', attachedDocuments.includes(doc._id) ? 'bg-brand-600/20 border-brand-500/40 text-brand-300' : 'bg-white/5 border-white/10 text-gray-500')}>
+                      <FileText size={12} className="flex-shrink-0" /><span className="truncate">{doc.originalName}</span>
+                    </button>
+                  ))}</div>
+                ) : <p className="text-xs text-gray-600">No ready documents. Upload some in Settings to ground agents in your own knowledge base.</p>}
               </div>
             </div>
           </motion.div>}</AnimatePresence>

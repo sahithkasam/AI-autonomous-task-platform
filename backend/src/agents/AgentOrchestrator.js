@@ -7,6 +7,7 @@ import { FinalAgent } from './FinalAgent.js';
 import Task from '../models/Task.js';
 import { getSocketIO } from '../socket/socketManager.js';
 import { logger } from '../utils/logger.js';
+import { retrieveRelevantChunks, formatContextForPrompt } from '../services/ragService.js';
 
 export class AgentOrchestrator {
   constructor(taskId, userId) {
@@ -59,7 +60,7 @@ export class AgentOrchestrator {
     await this.emit('subtask:update', { subtaskId, status, taskId: this.taskId });
   }
 
-  async execute(taskDescription, agentConfig = {}, onStreamChunk = null) {
+  async execute(taskDescription, agentConfig = {}, onStreamChunk = null, attachedDocuments = []) {
     const executionStart = Date.now();
     try {
       await this.updateTaskStatus('planning', { startedAt: new Date() });
@@ -107,7 +108,21 @@ export class AgentOrchestrator {
           const agent = subtask.assignedAgent;
 
           if (agent === 'research') {
-            result = await this.agents.research.research(subtask.description, taskDescription, '', onStreamChunk);
+            let documentContext = '';
+            if (attachedDocuments?.length) {
+              try {
+                const relevantChunks = await retrieveRelevantChunks({
+                  userId: this.userId,
+                  query: `${subtask.title} ${subtask.description}`,
+                  documentIds: attachedDocuments,
+                  topK: 6,
+                });
+                documentContext = formatContextForPrompt(relevantChunks);
+              } catch (err) {
+                logger.warn(`RAG retrieval failed for subtask ${subtask.id}: ${err.message}`);
+              }
+            }
+            result = await this.agents.research.research(subtask.description, taskDescription, documentContext, onStreamChunk);
           } else if (agent === 'optimizer') {
             result = await this.agents.optimizer.optimize(subtask.description, Object.values(agentOutputs), plan.constraints?.join(', ') || '', onStreamChunk);
           } else if (agent === 'critic') {
